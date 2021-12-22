@@ -374,8 +374,6 @@ static inline int cmp(const T&, const hobject_t&r) {
   return r.is_max() ? 0 : 1;
 }
 
-
-
 typedef version_t gen_t;
 
 struct ghobject_t {

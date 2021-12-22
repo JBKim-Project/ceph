@@ -66,6 +66,7 @@ if(HAVE_LIBZFS)
 endif()
 
 add_library(os STATIC ${libos_srcs})
+target_compile_options(os PUBLIC -lpmem2)
 target_link_libraries(os blk)
 
 target_link_libraries(os heap_profiler kv)
@@ -102,12 +103,15 @@ target_link_libraries(os kv)
 add_dependencies(os compressor_plugins)
 add_dependencies(os crypto_plugins)
 
+target_include_directories(os PUBLIC ../include)	
+target_compile_options(os PUBLIC -lpmem2)
 
 if(WITH_BLUESTORE)
   add_executable(ceph-bluestore-tool
     bluestore/bluestore_tool.cc)
   target_link_libraries(ceph-bluestore-tool
     os global)
+  target_compile_options(ceph-bluestore-tool PUBLIC -lpmem2)
   install(TARGETS ceph-bluestore-tool
     DESTINATION bin)
 endif()

@@ -88,6 +88,7 @@ if(LINUX)
 endif()
 
 add_compile_options(
+  -lpmem2
   -Wall
   -fno-strict-aliasing
   -fsigned-char)
@@ -119,7 +120,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
     # The MINGW headers are missing some "const" qualifiers.
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fpermissive>)
   else()
-    string(APPEND CMAKE_EXE_LINKER_FLAGS " -rdynamic")
+    string(APPEND CMAKE_EXE_LINKER_FLAGS "-lpmem2 -rdynamic")
   endif()
   string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Og")
   add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wstrict-null-sentinel>)
@@ -667,6 +668,8 @@ endif()
 
 add_subdirectory(kv)
 add_subdirectory(os)
+
+add_compile_options(-lpmem2)
 
 if(NOT WIN32)
 add_subdirectory(blk)

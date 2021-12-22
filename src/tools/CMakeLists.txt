@@ -8,6 +8,8 @@ set(rados_srcs
   ${PROJECT_SOURCE_DIR}/src/osd/ECUtil.cc)
 add_executable(rados ${rados_srcs})
 
+add_compile_options(-lpmem)
+
 target_link_libraries(rados librados global ${BLKID_LIBRARIES} ${CMAKE_DL_LIBS})
 if(WITH_LIBRADOSSTRIPER)
   target_link_libraries(rados radosstriper)

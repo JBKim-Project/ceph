@@ -49,10 +49,7 @@
 #include "common/pretty_binary.h"
 #include "kv/KeyValueHistogram.h"
 
-// pmdk
-#include <libpmem2.h>
-
-#ifdef HAVE_LIBZB
+#ifdef HAVE_LIBZBD
 #include "ZonedAllocator.h"
 #include "ZonedFreelistManager.h"
 #endif
@@ -69,9 +66,6 @@
 
 #define dout_context cct
 #define dout_subsys ceph_subsys_bluestore
-
-// [JB]
-#define PM_SIZE (1 << 27) // 128GB
 
 // [SHEAN]
 // I added some headers and variables for my needs
@@ -1174,81 +1168,37 @@ BlueStore::OnodeCacheShard *BlueStore::OnodeCacheShard::create(
   c = new LruOnodeCacheShard(cct);
   c->logger = logger;
 
-  //ifl_format();
-
-  //return c;
-//}
-
-//void BlueStore::OnodeCacheShard::ifl_format(void)
-//{
-  unsigned long i;
-
-  printf("FR format start!!!\n");
-
-  c->ifl_map_size = ((unsigned long) 128 * 1024 * 1024 * 1024);
-  c->ifl_nr_chunk = c->ifl_map_size / IFL_CHUNK_SIZE;
-  c->ifl_nr_slot = c->ifl_map_size / IFL_CHUNK_SIZE / 2;
-  printf("FR format variables are initialized!!!\n");
-
-  c->ifl_mut = new pthread_mutex_t[c->ifl_nr_slot + 1];
-  for(i = 0; i < c->ifl_nr_slot + 1; i++)
-	pthread_mutex_init(&(c->ifl_mut[i]), NULL);
-  printf("FR format slot mutex is initialized!!!\n");
-
-  // [pmdk]
-  if ((c->fd = open("/mnt/mem/ceph_fr", O_RDWR)) < 0)
-  {
-	perror("open");
-	exit(1);
-  }
-
-  if (pmem2_config_new(&(c->cfg)))
-  {
-	pmem2_perror("pmem2_config_new");
-	exit(1);
-  }
-
-  if (pmem2_source_from_fd(&(c->src), c->fd))
-  {
-	pmem2_perror("pmem2_source_from_fd");
-	exit(1);
-  }
-
-  if (pmem2_config_set_required_store_granularity(c->cfg, PMEM2_GRANULARITY_PAGE))
-  {
-	pmem2_perror("pmem2_config_set_required_store_granularity");
-	exit(1);
-  }
-
-  if (pmem2_map_new(&(c->map), c->cfg, c->src))
-  {
-	pmem2_perror("pmem2_map_new");
-	exit(1);
-  }
-
-  // pmdk
-  c->pmemory = (char*)pmem2_map_get_address(c->map);
-  memset(c->pmemory, 0, sizeof(char) * c->ifl_map_size);
-  c->size = pmem2_map_get_size(c->map);
-
-  c->persist = pmem2_get_persist_fn(c->map);
-  c->persist(c->pmemory, c->size);
-
-
-  c->ifl_chunk_base = (struct ifl_chunk*)(c->pmemory);
-  c->ifl_tag_base = (struct ifl_tag*)(c->ifl_chunk_base + c->ifl_nr_chunk);
-
-  //IFL_CHUNK_BASE = (struct ifl_chunck *)new char[ifl_map_size + (IFL_CHUNK_SIZE - 1)];
-  // To do
-  //IFL_CHUNK_BASE = (struct ifl_chunk *)(((unsigned long)IFL_CHUNK_BASE + (IFL_CHUNK_SIZE - 1)) / IFL_CHUNK_SIZE * IFL_CHUNK_SIZE);
-  //IFL_TAG_BASE = (struct ifl_tag *)(IFL_CHUNK_BASE + ifl_nr_chunk);
-
-  for(i = 0; i < c->ifl_nr_chunk; i++)
-	c->ifl_set_tag_init((struct ifl_tag*)(c->ifl_tag_base) + i, 0, 0);
-
-  printf("FR format complete!!!\n");
+  ifl_format();
 
   return c;
+}
+
+void BlueStore::OnodeCacheShard::ifl_format(void)
+{
+	/*
+	unsigned long i;
+
+	printf("FR format start!!!\n");
+
+	ifl_map_size = ((unsigned long) 128 * 1024 * 1024 * 1024);
+	ifl_nr_chunk = ifl_map_size / IFL_CHUNK_SIZE;
+	ifl_nr_slot = (ifl_map_size / IFL_CHUNK_SIZE) / 2;
+	printf("FR format variables are initialized!!!\n");
+
+	ifl_mut = new pthread_mutex_t[ifl_nr_slot + 1];
+	for(i = 0; i < ifl_nr_slot + 1; i++)
+		pthread_mutex_init(&ifl_mut[i], NULL);
+	printf("FR format slot mutex is initialized!!!\n");
+
+	IFL_CHUNK_BASE = (struct ifl_chunck *)new char[ifl_map_size + (IFL_CHUNK_SIZE - 1)];
+	// To do
+	IFL_CHUNK_BASE = (struct ifl_chunk *)(((unsigned long)IFL_CHUNK_BASE + (IFL_CHUNK_SIZE - 1)) / IFL_CHUNK_SIZE * IFL_CHUNK_SIZE);
+	IFL_TAG_BASE = (struct ifl_tag *)(IFL_CHUNK_BASE + ifl_nr_chunk);
+
+	for(i = 0; i < ifl_nr_chunk; i++)
+		ifl_set_tag_init((struct ifl_tag*)ifl_tag_base + i, 0, 0);
+	*/
+	printf("FR format complete!!!\n");
 }
 
 // LruBufferCacheShard
@@ -1973,7 +1923,6 @@ BlueStore::OnodeRef BlueStore::OnodeSpace::real_add(const ghobject_t& oid,
 void BlueStore::OnodeSpace::_remove(const ghobject_t& oid)
 {
   ldout(cache->cct, 20) << __func__ << " " << oid << " " << dendl;
-  ifl_unlink(oid);
   onode_map.erase(oid);
 }
 
@@ -2050,7 +1999,6 @@ BlueStore::OnodeRef BlueStore::OnodeSpace::real_lookup(const ghobject_t& oid)
 
 void BlueStore::OnodeSpace::clear()
 {
-  ifl_clear();
   std::lock_guard l(cache->lock);
   ldout(cache->cct, 10) << __func__ << " " << onode_map.size()<< dendl;
   for (auto &p : onode_map) {
@@ -2061,9 +2009,6 @@ void BlueStore::OnodeSpace::clear()
 
 bool BlueStore::OnodeSpace::empty()
 {
-  if (!ifl_empty())
-    return false;
-
   std::lock_guard l(cache->lock);
   return onode_map.empty();
 }
@@ -2074,7 +2019,6 @@ void BlueStore::OnodeSpace::rename(
   const ghobject_t& new_oid,
   const mempool::bluestore_cache_meta::string& new_okey)
 {
-  ifl_rename(oldo, old_oid, new_oid, new_okey);	
   std::lock_guard l(cache->lock);
   ldout(cache->cct, 30) << __func__ << " " << old_oid << " -> " << new_oid
 			<< dendl;
@@ -2109,9 +2053,6 @@ void BlueStore::OnodeSpace::rename(
 
 bool BlueStore::OnodeSpace::map_any(std::function<bool(Onode*)> f)
 {
-//  if (ifl_map_any(f))
-//	  return true;
-
   std::lock_guard l(cache->lock);
   ldout(cache->cct, 20) << __func__ << dendl;
   for (auto& i : onode_map) {
@@ -2179,9 +2120,6 @@ BlueStore::OnodeRef BlueStore::OnodeSpace::ifl_write(const ghobject_t& oid, Onod
 			ifl_clear_flag(tag_secondary, IFL_FLAG_ACK);
 
 	memcpy(&((struct ifl_chunk*)cache->ifl_chunk_base + index)->data, p, sizeof(struct Onode));
-	cache->persist = pmem2_get_persist_fn(cache->map);
-	cache->persist(cache->pmemory, cache->size);
-
 	ifl_set_tag(tag, IFL_FLAG_NEW | IFL_FLAG_VALID | IFL_FLAG_DIRTY | IFL_FLAG_ACK, current_id, oid);
 
 	if(ifl_get_id(tag_secondary) == current_id)
@@ -2291,91 +2229,14 @@ bool BlueStore::OnodeSpace::ifl_unlink(const ghobject_t& oid)
 	return true;
 }
 
-void BlueStore::OnodeSpace::ifl_rename(OnodeRef& o, const ghobject_t& old_oid,
-		const ghobject_t& new_oid, const mempool::bluestore_cache_meta::string& new_okey)
-{
-	unsigned long old_index;
-	unsigned long new_index;
-	struct ifl_tag* old_tag;
-	struct ifl_tag* new_tag;
-	unsigned long old_id;
-	unsigned long new_id;
-	OnodeRef oo;
-	OnodeRef no;
-	void* op;
-	void* np;
-
-	old_id = BlueStore::OnodeSpace::hashing_djb2(old_oid.hobj.oid.name);
-	new_id = BlueStore::OnodeSpace::hashing_djb2(new_oid.hobj.oid.name);
-	old_index = ifl_get_index(old_id);
-	new_index = ifl_get_index(new_id);
-	old_tag = cache->ifl_tag_base + old_index;
-	new_tag = cache->ifl_tag_base + new_index;
-	op = (void*)&*oo;
-	np = (void*)&*no;
-		
-
-	pthread_mutex_lock(&cache->ifl_mut[old_index]);
-
-	if (ifl_get_id(old_tag) == old_id) {
-		memcpy(op, &((struct ifl_chunk*)cache->ifl_chunk_base + old_index)->data, sizeof(struct Onode));
-		real_add(old_oid, oo);
-	}
-
-	pthread_mutex_unlock(&cache->ifl_mut[old_index]);
-
-	pthread_mutex_lock(&cache->ifl_mut[new_index]);
-
-	if (ifl_get_id(new_tag) == new_id) {
-		memcpy(np, &((struct ifl_chunk*)cache->ifl_chunk_base + new_index)->data, sizeof(struct Onode));
-		real_add(new_oid, no);
-	}
-
-	pthread_mutex_unlock(&cache->ifl_mut[new_index]);
-}
-
-void BlueStore::OnodeSpace::ifl_clear()
-{
-	int i;
-	for(i = 0; i < cache->ifl_nr_chunk; i++)
-		cache->ifl_set_tag_init((struct ifl_tag*)(cache->ifl_tag_base) + i, 0, 0);
-}
-
-bool BlueStore::OnodeSpace::ifl_empty()
-{
-	ifl_tag* tag;
-	int i;
-	for(i = 0; i < cache->ifl_nr_chunk; i++) {
-		tag = cache->ifl_tag_base + i;
-		if (ifl_get_id(tag) != 0)
-			return false;
-	}
-
-	return true;
-}
-/*
-bool BlueStore::OnodeSpace::ifl_map_any(std::function<bool(Onode*)> f)
-{
-  OnodeRef o;
-  void* p = (void*)&*o;
-  int i;
-  for(i = 0; i < cache->ifl_nr_chunk; i++) {
-    memcpy(p, &((struct ifl_chunk*)cache->ifl_chunk_base + i)->data, sizeof(struct Onode));
-    if (f(*p)) {
-      return true;
-    }
-  }
-  return false;
-}
-*/
 bool BlueStore::OnodeSpace::ifl_flush(const ghobject_t& oid, unsigned long index)
 {
-	struct ifl_tag* tag = cache->ifl_tag_base + index;
-	
+	struct ifl_tag* tag = cache->ifl_tag_base + index;	
 	OnodeRef o; // const
 	void* p = (void*)&*o;
+	
 
-	memcpy(p, &((struct ifl_chunk*)cache->ifl_chunk_base + index)->data, sizeof(struct Onode));
+	memcpy(p, (cache->ifl_chunk_base + index)->data, sizeof(struct Onode));
 	real_add(ifl_get_oid(tag), o);
 
 	return true;
@@ -2384,8 +2245,7 @@ bool BlueStore::OnodeSpace::ifl_flush(const ghobject_t& oid, unsigned long index
 bool BlueStore::OnodeSpace::ifl_load(const ghobject_t& oid, unsigned long index)
 {
 	OnodeRef o = real_lookup(oid);
-	void* p = (void*)&*o;
-
+	void* p = (void*)&*o;	
 	memcpy(&(cache->ifl_chunk_base + index)->data, p, sizeof(struct Onode));
 
 	return true;

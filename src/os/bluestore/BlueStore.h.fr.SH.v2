@@ -61,9 +61,6 @@
 #define IFL_FLAG_DIRTY	4
 #define IFL_FLAG_ACK	8
 
-/// pmdk
-#include </usr/local/include/libpmem2.h>
-
 class Allocator;
 class FreelistManager;
 class BlueStoreRepairer;
@@ -1281,7 +1278,7 @@ public:
 
     virtual void _pin(Onode* o) = 0;
     virtual void _unpin(Onode* o) = 0;
-	
+
 	/// for FR
 	unsigned long ifl_map_size;
 	unsigned long ifl_nr_chunk;
@@ -1290,19 +1287,9 @@ public:
 	struct ifl_chunk* ifl_chunk_base;
 	struct ifl_tag* ifl_tag_base;
 
-	/// for pmdk
-	int fd;
-	struct pmem2_config *cfg;
-	struct pmem2_map *map;
-	struct pmem2_source *src;
-	pmem2_persist_fn persist;
-
-	char *pmemory;
-	size_t size;
-
-	void ifl_format(void);
-
+  private:
 	/// for FR
+	void ifl_format(void);
 	void ifl_set_tag_init(struct ifl_tag* tag, unsigned char flag, unsigned long id)
 	{
 		struct ifl_tag tmp;
@@ -1313,7 +1300,7 @@ public:
 	}
   public:
     OnodeCacheShard(CephContext* cct) : CacheShard(cct) {}
-    static OnodeCacheShard *create(CephContext* cct, std::string type,
+    OnodeCacheShard *create(CephContext* cct, std::string type,
                                    PerfCounters *logger);
     virtual void _add(Onode* o, int level) = 0;
     virtual void _rm(Onode* o) = 0;
@@ -1387,12 +1374,6 @@ public:
 	OnodeRef ifl_write(const ghobject_t& oid, OnodeRef& o);
 	OnodeRef ifl_read(const ghobject_t& oid);
 	bool ifl_unlink(const ghobject_t& oid);
-	void ifl_rename(OnodeRef& o, const ghobject_t& old_oid,
-		const ghobject_t& new_oid,
-		const mempool::bluestore_cache_meta::string& new_okey);
-    	void ifl_clear();
-	bool ifl_empty();
-    	//bool ifl_map_any(std::function<bool(Onode*)> f);
 	bool ifl_flush(const ghobject_t& oid, unsigned long index);
 	bool ifl_load(const ghobject_t& oid, unsigned long index);
 	unsigned long ifl_select_chunk_index(unsigned long id, unsigned long index);
@@ -4101,7 +4082,6 @@ public:
     ++per_level_files[pos];
     ++per_level_files[LEVEL_MAX - LEVEL_FIRST];
   }
-
   void sub_usage(void* hint, const bluefs_fnode_t& fnode) override {
     if (hint == nullptr)
       return;
@@ -4115,29 +4095,7 @@ public:
       auto& cur2 = per_level_per_dev_usage.at(p.bdev, LEVEL_MAX - LEVEL_FIRST);
       ceph_assert(cur2 >= p.length);
       cur2 -= p.length;
-    }
-    //update per-level actual totals
-    auto& cur = per_level_per_dev_usage.at(BlueFS::MAX_BDEV, pos);
-    ceph_assert(cur >= fnode.size);
-    cur -= fnode.size;
-    ceph_assert(per_level_files[pos] > 0);
-    --per_level_files[pos];
-    ceph_assert(per_level_files[LEVEL_MAX - LEVEL_FIRST] > 0);
-    --per_level_files[LEVEL_MAX - LEVEL_FIRST];
-  }
-
-  
-  void add_usage(void* hint, uint64_t fsize) override {
-    if (hint == nullptr)
-      return;
-    size_t pos = (size_t)hint - LEVEL_FIRST;
-    //update per-level actual totals
-    auto& cur = per_level_per_dev_usage.at(BlueFS::MAX_BDEV, pos);
-    auto& max = per_level_per_dev_max.at(BlueFS::MAX_BDEV, pos);
-    cur += fsize;
-    if (cur > max) {
-      max = cur;
-    }
+      }
   }
   void sub_usage(void* hint, uint64_t fsize) override {
     if (hint == nullptr)

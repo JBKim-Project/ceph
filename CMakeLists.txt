@@ -74,7 +74,8 @@ endif(WITH_MANPAGE)
 
 include_directories(
   ${PROJECT_BINARY_DIR}/src/include
-  ${PROJECT_SOURCE_DIR}/src)
+  ${PROJECT_SOURCE_DIR}/src
+  /usr/local/include)
 
 if(WIN32)
   include_directories(
@@ -86,11 +87,11 @@ if(WIN32)
   add_compile_options("SHELL:-include win32_errno.h")
 endif()
 
-if(FREEBSD)
-  include_directories(SYSTEM /usr/local/include)
-  link_directories(/usr/local/lib)
-  list(APPEND CMAKE_REQUIRED_INCLUDES /usr/local/include)
-endif(FREEBSD)
+#if(FREEBSD)
+include_directories(SYSTEM /usr/local/include)
+link_directories(/usr/local/lib)
+list(APPEND CMAKE_REQUIRED_INCLUDES /usr/local/include)
+#endif(FREEBSD)
 
 
 #put all the libs and binaries in one place
