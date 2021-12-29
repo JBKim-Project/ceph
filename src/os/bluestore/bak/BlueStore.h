@@ -1111,16 +1111,6 @@ public:
     ceph::mutex flush_lock = ceph::make_mutex("BlueStore::Onode::flush_lock");
     ceph::condition_variable flush_cond;   ///< wait here for uncommitted txns
 
-	Onode(const ghobject_t& o) : nref(0),
-	c(NULL),
-	oid(o),
-	key(" "),
-	exists(false),
-        cached(false),
-        pinned(false),
-	extent_map(this) {
-    }
-
     Onode(Collection *c, const ghobject_t& o,
 	  const mempool::bluestore_cache_meta::string& k)
       : nref(0),
@@ -1471,7 +1461,7 @@ public:
 	{
 		return tag->oid;
 	}
-
+	
   public:
     OnodeSpace(OnodeCacheShard *c) : cache(c) {}
     ~OnodeSpace() {

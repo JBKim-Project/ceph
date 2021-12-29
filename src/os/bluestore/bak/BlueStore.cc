@@ -1243,11 +1243,9 @@ BlueStore::OnodeCacheShard *BlueStore::OnodeCacheShard::create(
   c->ifl_tag_base = (struct ifl_tag*)(c->ifl_chunk_base + c->ifl_nr_chunk);
   //c->pmemory = new char[PM_SIZE];
   printf("Memory allocation Done\n");
-  printf("ifl_chunk_base ptr : %p\n", c->ifl_chunk_base);
-  printf("ifl_chunk_base ptr+1 : %p\n", c->ifl_chunk_base+1);
-  printf("ifl_chunk_base ptr+2 : %p\n", c->ifl_chunk_base+2);
+  printf("ifl_chunk_base ptr : %p", c->ifl_chunk_base);
   //c->ifl_chunk_base = (struct ifl_chunk*)(c->pmemory);
-  printf("ifl_tag_base ptr : %p\n", c->ifl_tag_base);
+  printf("ifl_tag_base ptr : %p", c->ifl_tag_base);
 
   //IFL_CHUNK_BASE = (struct ifl_chunck *)new char[ifl_map_size + (IFL_CHUNK_SIZE - 1)];
   // To do
@@ -1971,23 +1969,16 @@ BlueStore::OnodeRef BlueStore::OnodeSpace::real_add(const ghobject_t& oid,
 {
   printf("OnodeSpace::real_add\n");
   std::lock_guard l(cache->lock);
-  printf("Hello 1\n");
   auto p = onode_map.find(oid);
   if (p != onode_map.end()) {
-    printf("onode_map.end\n");
     ldout(cache->cct, 30) << __func__ << " " << oid << " " << o
 			  << " raced, returning existing " << p->second
 			  << dendl;
-	printf("ldout ...?\n");
     return p->second;
   }
-  printf("Hello 2\n");
   ldout(cache->cct, 20) << __func__ << " " << oid << " " << o << dendl;
-  printf("Hello 3\n");
   onode_map[oid] = o;
-  printf("Hello 4\n");
   cache->_add(o.get(), 1);
-  printf("Hello 5\n");
   cache->_trim();
   return o;
 }
@@ -2048,10 +2039,8 @@ BlueStore::OnodeRef BlueStore::OnodeSpace::real_lookup(const ghobject_t& oid)
     std::lock_guard l(cache->lock);
     ceph::unordered_map<ghobject_t,OnodeRef>::iterator p = onode_map.find(oid);
     if (p == onode_map.end()) {
-	  printf("onode_map.end\n");
       ldout(cache->cct, 30) << __func__ << " " << oid << " miss" << dendl;
     } else {
-	  printf("not onode_map.end\n");
       ldout(cache->cct, 30) << __func__ << " " << oid << " hit " << p->second
                             << " " << p->second->nref
                             << " " << p->second->cached
@@ -2067,14 +2056,11 @@ BlueStore::OnodeRef BlueStore::OnodeSpace::real_lookup(const ghobject_t& oid)
   }
 
   if (hit) {
-	printf("HIT\n");
     cache->logger->inc(l_bluestore_onode_hits);
   } else {
-	printf("MISS\n");
     cache->logger->inc(l_bluestore_onode_misses);
   }
 
-  printf("pass\n");
   return o;
 }
 
@@ -2178,6 +2164,7 @@ BlueStore::OnodeRef BlueStore::OnodeSpace::ifl_write(const ghobject_t& oid, Onod
 	struct ifl_tag* tag;
 	struct ifl_tag* tag_secondary;
 	unsigned long current_id;
+	void* p = (void*)&*o; 
 	
 	current_id = BlueStore::OnodeSpace::hashing_djb2(oid.hobj.oid.name);
 	lock_index = ifl_get_index(current_id);
@@ -2208,20 +2195,16 @@ BlueStore::OnodeRef BlueStore::OnodeSpace::ifl_write(const ghobject_t& oid, Onod
 		ifl_clear_flag(tag, IFL_FLAG_ACK);
 	}
 
-	printf("write hello 1\n");
 	if((ifl_get_id(tag_secondary) == current_id) && (ifl_get_flag(tag_secondary) & IFL_FLAG_VALID))
 		if (ifl_get_flag(tag_secondary) & IFL_FLAG_ACK)
 			ifl_clear_flag(tag_secondary, IFL_FLAG_ACK);
 
-	printf("write hello 2\n");
-	memcpy(&((struct ifl_chunk*)cache->ifl_chunk_base + index)->data, o.get(), sizeof(struct Onode));
+	memcpy(&((struct ifl_chunk*)cache->ifl_chunk_base + index)->data, p, sizeof(struct Onode));
 	//cache->persist = pmem2_get_persist_fn(cache->map);
 	//cache->persist(cache->pmemory, cache->size);
 
-	printf("write hello 3\n");
 	ifl_set_tag(tag, IFL_FLAG_NEW | IFL_FLAG_VALID | IFL_FLAG_DIRTY | IFL_FLAG_ACK, current_id, oid);
 
-	printf("write hello 4\n");
 	if(ifl_get_id(tag_secondary) == current_id)
 	{
 		ifl_clear_flag(tag_secondary, IFL_FLAG_VALID);
@@ -2230,7 +2213,6 @@ BlueStore::OnodeRef BlueStore::OnodeSpace::ifl_write(const ghobject_t& oid, Onod
 
 	pthread_mutex_unlock(&cache->ifl_mut[lock_index]);
 
-	printf("write hello 5\n");
 	return o;
 }
 
@@ -2246,28 +2228,24 @@ BlueStore::OnodeRef BlueStore::OnodeSpace::ifl_read(const ghobject_t& oid)
 	// unsigned long tmp_index;
 	unsigned long current_id;
 	unsigned long i = 0; // [SHEAN]
+	Onode *p = new Onode;
 	/*
 	unsigned long first_lock_index = 0; // [SHEAN]
 	unsigned long lock_cnt = 0; // [SHEAN] where is while statement....?
-	*/
-	OnodeRef o;
-	Onode *on;
-	char* alloc = new char[sizeof(Onode)];
-	bool hit = false;
-
-	//printf("Hello 0\n");
-	//printf("Hello 1\n");
+	*/	
+	printf("Hello 0\n");
+	printf("Hello 1\n");
 	current_id = BlueStore::OnodeSpace::hashing_djb2(oid.hobj.oid.name);
 	lock_index = ifl_get_index(current_id);
 	pthread_mutex_lock(&cache->ifl_mut[lock_index]);
 
-	//printf("Hello 2\n");
+	printf("Hello 2\n");
 	index = ifl_select_chunk_to_read(current_id, lock_index);
 	tag = (struct ifl_tag*)cache->ifl_tag_base + index;
 	index_secondary = ifl_get_t_index(index);
 	tag_secondary = (struct ifl_tag*)cache->ifl_tag_base + index_secondary;
 
-	//printf("Hello 3\n");
+	printf("Hello 3\n");
 	if (ifl_get_id(tag_secondary) == current_id)
 	{
 		if(ifl_get_flag(tag_secondary) & IFL_FLAG_VALID)
@@ -2280,7 +2258,7 @@ BlueStore::OnodeRef BlueStore::OnodeSpace::ifl_read(const ghobject_t& oid)
 		}
 	}
 
-	//printf("Hello 4\n");
+	printf("Hello 4\n");
 	if ((ifl_get_id(tag) == current_id) && (ifl_get_flag(tag) & IFL_FLAG_VALID))
 	{
 		//hit
@@ -2293,22 +2271,16 @@ BlueStore::OnodeRef BlueStore::OnodeSpace::ifl_read(const ghobject_t& oid)
 			ifl_flush(oid, index);
 			ifl_clear_flag(tag, IFL_FLAG_ACK);
 		}
-		hit = ifl_load(oid, index);
+		ifl_load(oid, index);
 	}
 	
-	//printf("Hello 5\n");
+	printf("Hello 5\n");
 	ifl_clear_flag(tag_secondary, IFL_FLAG_NEW);
 
-	//printf("Hello 6\n");
+	printf("Hello 6\n");
+	memcpy(p, &((struct ifl_chunk*)(cache->ifl_chunk_base) + index)->data, sizeof(struct Onode));
 
-	if(hit) 
-	{
-		memcpy(alloc, &((struct ifl_chunk*)(cache->ifl_chunk_base) + index)->data, sizeof(struct Onode));
-		on = (struct Onode*)&*alloc;
-		o.reset(on);
-	}
-
-	//printf("Hello 7\n");
+	printf("Hello 7\n");
 	flag = IFL_FLAG_NEW | IFL_FLAG_VALID;
 
 	if (ifl_get_flag(tag) & IFL_FLAG_ACK)
@@ -2316,11 +2288,11 @@ BlueStore::OnodeRef BlueStore::OnodeSpace::ifl_read(const ghobject_t& oid)
 
 	ifl_set_tag(tag, flag, current_id, oid);
 
-	//printf("Hello 8\n");
+	printf("Hello 8\n");
 	// pthread_mutex_unlock(&ifl_mut[(first_lock_index + i) % ifl_nr_slot]);
 	pthread_mutex_unlock(&cache->ifl_mut[(lock_index + i) % cache->ifl_nr_slot]);
-	//printf("Hello 9\n");
-	return o;
+	printf("Hello 9\n");
+	return p;
 }
 
 bool BlueStore::OnodeSpace::ifl_unlink(const ghobject_t& oid)
@@ -2438,13 +2410,9 @@ bool BlueStore::OnodeSpace::ifl_flush(const ghobject_t& oid, unsigned long index
 	struct ifl_tag* tag = cache->ifl_tag_base + index;
 	
 	OnodeRef o; // const
-	Onode *on;
-	char* alloc = new char[sizeof(Onode)];
+	void* p = (void*)&*o;
 
-	memcpy(alloc, &((struct ifl_chunk*)cache->ifl_chunk_base + index)->data, sizeof(struct Onode));
-	on = (struct Onode*)&*alloc;
-	o.reset(on);
-
+	memcpy(p, &((struct ifl_chunk*)cache->ifl_chunk_base + index)->data, sizeof(struct Onode));
 	real_add(ifl_get_oid(tag), o);
 
 	return true;
@@ -2454,16 +2422,11 @@ bool BlueStore::OnodeSpace::ifl_load(const ghobject_t& oid, unsigned long index)
 {
   printf("OnodeSpace::ifl_load\n");
 	OnodeRef o = real_lookup(oid);
-	//printf("ifl_chunk_base : %p\n", cache->ifl_chunk_base);
-	//printf("ifl_chunk_base + index : %p\n", cache->ifl_chunk_base+index);
-	printf("index : %d\n", index);
-	//printf("OnodeRef : %p\n", o);
-	if (o) {
-		memcpy(cache->ifl_chunk_base + index, o.get(), sizeof(struct Onode));
-		return true;
-	}
-	//printf("memcpy..? pass?\n");
-	return false;
+	void* p = (void*)&*o;
+
+	memcpy(&(cache->ifl_chunk_base + index)->data, p, IFL_CHUNK_SIZE);
+
+	return true;
 }
 
 unsigned long BlueStore::OnodeSpace::ifl_select_chunk_index(unsigned long id, unsigned long index)
@@ -3773,7 +3736,6 @@ void BlueStore::ExtentMap::fault_range(
   uint32_t offset,
   uint32_t length)
 {
-  printf("fault_range\n");
   dout(30) << __func__ << " 0x" << std::hex << offset << "~" << length
 	   << std::dec << dendl;
   auto start = seek_shard(offset);
@@ -3810,8 +3772,6 @@ void BlueStore::ExtentMap::fault_range(
 	       << " for range 0x" << offset << "~" << length << std::dec
 	       << " (" << v.length() << " bytes)" << dendl;
       ceph_assert(p->dirty == false);
-	  printf("v.length() = %d\n", v.length());
-	  printf("p->shard_info->bytes = %d\n", p->shard_info->bytes);
       ceph_assert(v.length() == p->shard_info->bytes);
       onode->c->store->logger->inc(l_bluestore_onode_shard_misses);
     } else {
@@ -4567,7 +4527,16 @@ BlueStore::OnodeRef BlueStore::Collection::get_onode(
       ceph_abort();
     }
   }
-  
+  /*
+  ifl_read(buf, oid, offset, size);
+  if(buf)
+    return buf;
+  if(!buf)
+  {
+    OnodeRef o = onode_map.lookup(oid);
+    return o;
+  }
+  */
   OnodeRef o = onode_map.lookup(oid);
   if (o)
     return o;
@@ -5100,7 +5069,6 @@ BlueStore::BlueStore(CephContext *cct,
     min_alloc_size_order(ctz(_min_alloc_size)),
     mempool_thread(this)
 {
-  printf("BlueStore :: BlueStore Constructor \n");
   //FR_init(size, ...);
   _init_logger();
   cct->_conf.add_observer(this);
@@ -5109,7 +5077,6 @@ BlueStore::BlueStore(CephContext *cct,
 
 BlueStore::~BlueStore()
 {
-  printf("destructor\n");
   cct->_conf.remove_observer(this);
   _shutdown_logger();
   ceph_assert(!mounted);
@@ -7680,15 +7647,12 @@ int BlueStore::dump_bluefs_sizes(ostream& out)
 
 void BlueStore::set_cache_shards(unsigned num)
 {
-  printf("set_cache_shards :::::: %d\n", num);
   dout(10) << __func__ << " " << num << dendl;
   size_t oold = onode_cache_shards.size();
-  printf("oold : %d\n", oold);
   size_t bold = buffer_cache_shards.size();
   ceph_assert(num >= oold && num >= bold);
   onode_cache_shards.resize(num);
   buffer_cache_shards.resize(num);
-  printf("set_cache_shards :::::: %d	 !!!!!!!\n", num);
   for (unsigned i = oold; i < num; ++i) {
     onode_cache_shards[i] = 
         OnodeCacheShard::create(cct, cct->_conf->bluestore_cache_type,
@@ -10716,7 +10680,6 @@ int BlueStore::_do_read(
   uint32_t op_flags,
   uint64_t retry_count)
 {
-  printf("_do_read\n");
   FUNCTRACE(cct);
   int r = 0;
   int read_cache_policy = 0; // do not bypass clean or dirty cache
@@ -13679,7 +13642,6 @@ void BlueStore::_txc_aio_submit(TransContext *txc)
 
 void BlueStore::_txc_add_transaction(TransContext *txc, Transaction *t)
 {
-  printf("_txc_add_transaction\n");
   Transaction::iterator i = t->begin();
 
   _dump_transaction<30>(cct, t);
@@ -13812,7 +13774,6 @@ void BlueStore::_txc_add_transaction(TransContext *txc, Transaction *t)
     std::unique_lock l(c->lock);
     OnodeRef &o = ovec[op->oid];
     if (!o) {
-	  printf("Not OnodeRef\n");
       ghobject_t oid = i.get_oid(op->oid);
       o = c->get_onode(oid, create, op->op == Transaction::OP_CREATE);
     }
@@ -13825,15 +13786,12 @@ void BlueStore::_txc_add_transaction(TransContext *txc, Transaction *t)
 
     switch (op->op) {
     case Transaction::OP_CREATE:
-	  printf("create\n");
     case Transaction::OP_TOUCH:
-	  printf("touch\n");
       r = _touch(txc, c, o);
       break;
 
     case Transaction::OP_WRITE:
       {
-	  printf("write\n");
         uint64_t off = op->off;
         uint64_t len = op->len;
 	uint32_t fadvise_flags = i.get_fadvise_flags();
@@ -13845,7 +13803,6 @@ void BlueStore::_txc_add_transaction(TransContext *txc, Transaction *t)
 
     case Transaction::OP_ZERO:
       {
-	  printf("zero\n");
         uint64_t off = op->off;
         uint64_t len = op->len;
 	r = _zero(txc, c, o, off, len);
@@ -13867,14 +13824,12 @@ void BlueStore::_txc_add_transaction(TransContext *txc, Transaction *t)
 
     case Transaction::OP_REMOVE:
       {
-	  printf("remove\n");
 	r = _remove(txc, c, o);
       }
       break;
 
     case Transaction::OP_SETATTR:
       {
-	  printf("setaatr\n");
         string name = i.decode_string();
         bufferptr bp;
         i.decode_bp(bp);
@@ -13905,7 +13860,6 @@ void BlueStore::_txc_add_transaction(TransContext *txc, Transaction *t)
 
     case Transaction::OP_CLONE:
       {
-	  printf("clone\n");
 	OnodeRef& no = ovec[op->dest_oid];
 	if (!no) {
           const ghobject_t& noid = i.get_oid(op->dest_oid);
@@ -13948,7 +13902,6 @@ void BlueStore::_txc_add_transaction(TransContext *txc, Transaction *t)
     case Transaction::OP_COLL_MOVE_RENAME:
     case Transaction::OP_TRY_RENAME:
       {
-	  printf("rename\n");
 	ceph_assert(op->cid == op->dest_cid);
 	const ghobject_t& noid = i.get_oid(op->dest_oid);
 	OnodeRef& no = ovec[op->dest_oid];
@@ -15439,7 +15392,6 @@ int BlueStore::_do_write(
   bufferlist& bl,
   uint32_t fadvise_flags)
 {
-  printf("_do_write\n");
   int r = 0;
 
   dout(20) << __func__
@@ -15544,7 +15496,6 @@ int BlueStore::_write(TransContext *txc,
 		      bufferlist& bl,
 		      uint32_t fadvise_flags)
 {
-  printf("_write\n");
   dout(15) << __func__ << " " << c->cid << " " << o->oid
 	   << " 0x" << std::hex << offset << "~" << length << std::dec
 	   << dendl;
@@ -15554,7 +15505,6 @@ int BlueStore::_write(TransContext *txc,
   } else {
     _assign_nid(txc, o);
     r = _do_write(txc, c, o, offset, length, bl, fadvise_flags);
-	printf("finish _do_write\n");
     txc->write_onode(o);
   }
   dout(10) << __func__ << " " << c->cid << " " << o->oid
